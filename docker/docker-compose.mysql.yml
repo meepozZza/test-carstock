@@ -1,0 +1,26 @@
+---
+version: "3.6"
+
+networks:
+  frontend:
+    external:
+      name: nginx-proxy
+  backend:
+    external:
+      name: ${COMPOSE_PROJECT_NAME}.backend
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ${COMPOSE_PROJECT_NAME}.mysql
+    restart: unless-stopped
+    networks:
+      - backend
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_DATABASE}
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - ./.data/mysql:/var/lib/mysql
+      - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d

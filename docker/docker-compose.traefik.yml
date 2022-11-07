@@ -1,0 +1,35 @@
+---
+version: "3.6"
+
+networks:
+  default:
+    name: nginx-proxy
+    external: true
+
+services:
+  traefik:
+    image: "traefik:v1.7.14"
+    container_name: ${COMPOSE_PROJECT_NAME}.traefik
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    expose:
+      # traefik dashboard port
+      - 8080
+    labels:
+      traefik.enable: true
+      traefik.frontend.rule: "Host:${TRAEFIK_DOMAIN}"
+      traefik.frontend.redirect.entryPoint: "https"
+      # get md5 from htpasswd or http://www.htaccesstools.com/htpasswd-generator/
+      # and then double all $ to $$ to avoid docker-compose
+      traefik.frontend.auth.basic: "${TRAEFIK_AUTH}"
+      traefik.protocol: "http"
+      traefik.port: 8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/traefik.toml:/etc/traefik/traefik.toml
+      - ./traefik/acme.json:/acme.json
+    environment:
+        - CF_API_EMAIL=${CF_API_EMAIL}
+        - CF_API_KEY=${CF_API_KEY}

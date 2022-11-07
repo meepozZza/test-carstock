@@ -1,0 +1,121 @@
+---
+version: "3.6"
+
+networks:
+  frontend:
+    external:
+      name: nginx-proxy
+  backend:
+    external:
+      name: ${COMPOSE_PROJECT_NAME}.backend
+  default:
+      name: nginx-proxy
+      external: true
+
+services:
+  nginx:
+    build:
+      context: nginx
+    container_name: ${COMPOSE_PROJECT_NAME}.nginx
+    networks:
+      - frontend
+      - backend
+    env_file:
+      - application.env
+    restart: unless-stopped
+    depends_on:
+      - php-fpm
+    volumes:
+      - ../:/app/
+      - ./nginx/sites/:/etc/nginx/sites-available/
+    labels:
+        traefik.enable: true
+        traefik.admin.frontend.rule: "Host:${APP_DOMAIN};PathPrefix:${ADMIN_PATH}"
+        traefik.admin.frontend.whiteList.useXForwardedFor: true
+        traefik.admin.frontend.whiteList.sourceRange: "${IP_ADMIN_WHITE_LIST}"
+        traefik.front.frontend.rule: "Host:${APP_DOMAIN}"
+        traefik.front.frontend.whiteList.useXForwardedFor: true
+        traefik.front.frontend.whiteList.sourceRange: "${IP_WHITE_LIST}"
+        traefik.frontend.redirect.entryPoint: "https"
+        traefik.port: 80
+        traefik.protocol: "http"
+
+  php-fpm:
+    build:
+      context: php-fpm
+      args:
+        - INSTALL_XDEBUG=${INSTALL_XDEBUG}
+        - XDEBUG_PORT=${XDEBUG_PORT}
+        - TZ=UTC
+    restart: unless-stopped
+    depends_on:
+        - traefik
+    container_name: ${COMPOSE_PROJECT_NAME}.php-fpm
+    environment:
+      - DB_CONNECTION=${DB_CONNECTION}
+      - DB_HOST=${COMPOSE_PROJECT_NAME}.mysql
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+      - DB_USERNAME=${DB_USERNAME}
+      - DB_PASSWORD=${DB_PASSWORD}
+      - REDIS_DB=${REDIS_DB}
+      - REDIS_PREFIX=${REDIS_PREFIX}
+      - REDIS_HOST=${COMPOSE_PROJECT_NAME}.redis
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - REDIS_PORT=${REDIS_PORT}
+      - REDIS_CLIENT=${REDIS_CLIENT}
+      - REDIS_CLUSTER=${REDIS_CLUSTER}
+      - SCOUT_ELASTIC_HOST=${COMPOSE_PROJECT_NAME}.elasticsearch
+      - CLICKHOUSE_HOST=${COMPOSE_PROJECT_NAME}.clickhouse
+      - CLICKHOUSE_PORT=${CLICKHOUSE_PORT}
+      - CLICKHOUSE_DB=${CLICKHOUSE_DB}
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+    env_file:
+      - application.env
+    networks:
+      - backend
+    volumes:
+      - ../:/app/
+      - ./php-fpm/php.ini:/usr/local/etc/php/php.ini
+
+  mysql:
+      image: mysql:8.0
+      container_name: ${COMPOSE_PROJECT_NAME}.mysql
+      restart: unless-stopped
+      depends_on:
+          - traefik
+      networks:
+          - backend
+      environment:
+          MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+          MYSQL_DATABASE: ${DB_DATABASE}
+          MYSQL_USER: ${DB_USERNAME}
+          MYSQL_PASSWORD: ${DB_PASSWORD}
+      volumes:
+          - ./.data/mysql:/var/lib/mysql
+          - ./mysql/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+
+  traefik:
+      image: "traefik:v1.7.14"
+      container_name: ${COMPOSE_PROJECT_NAME}.traefik
+      restart: unless-stopped
+      ports:
+          - 80:80
+          - 443:443
+      expose:
+          - 8080
+      labels:
+          traefik.enable: true
+          traefik.frontend.rule: "Host:${TRAEFIK_DOMAIN}"
+          traefik.frontend.redirect.entryPoint: "https"
+          traefik.frontend.auth.basic: "${TRAEFIK_AUTH}"
+          traefik.protocol: "http"
+          traefik.port: 8080
+      volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - ./traefik/traefik.toml:/etc/traefik/traefik.toml
+          - ./traefik/acme.json:/acme.json
+      environment:
+          - CF_API_EMAIL=${CF_API_EMAIL}
+          - CF_API_KEY=${CF_API_KEY}
